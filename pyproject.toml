@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "py-jetblue"
+version = "0.1.0"
+description = "Find JetBlue Airline prices."
+authors = ["Kevin Ramdath <krpent@gmail.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+requests = "^2.27.1"
+
+[tool.poetry.dev-dependencies]
+black = "^22.1.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
