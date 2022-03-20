@@ -1,6 +1,7 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Tuple, Optional
 import asyncio
 from pyppeteer.browser import Browser
 from pyppeteer.page import Page
@@ -52,16 +53,6 @@ class Segment:
     throughFlightLegs: List[Dict]  # FlightLeg
 
 
-@dataclass
-class Itinerary:
-    id: str
-    source: str
-    destination: str
-    depart: datetime
-    arrive: datetime
-    isOverNightFlight: bool
-    segments: List[Dict]  # Segment
-
 
 class FareStatus(Enum):
     unknown = 0
@@ -73,15 +64,24 @@ class FareStatus(Enum):
 class FareInfo:
     itineraryID: str
     price: float
+    code: str
     cabinclass: str
     refundable: bool
     status: FareStatus
 
-
 @dataclass
-class JetBlueResponse:
-    fares: Dict[str, List[FareInfo]]
-    intineraries: List[Itinerary]
+class Itinerary:
+    id: str
+    source: str
+    destination: str
+    depart: datetime
+    arrive: datetime
+    isOverNightFlight: bool
+    #segments: List[Dict]  # Segment
+
+    # custom properties
+    fares: List[FareInfo]
+
 
 
 class JetBluePuppet:
@@ -151,55 +151,62 @@ class JetBluePuppet:
 
 class JetBlueParser:
     @classmethod
-    def parse(self, payload: JetBluePuppetResponse) -> JetBlueResponse:
-        result: JetBlueResponse = JetBlueResponse(fares={}, intineraries=[])
-        for fareGroup in payload.fareGroup:
-            code = fareGroup.get("fareCode", "")
-            for fare in fareGroup.get("bundleList", []):
-                id = fare.get("itineraryID")
-                if not id in result.fares:
-                    result.fares[id] = {}
+    def parse(self, payload: JetBluePuppetResponse) -> List[Itinerary]:
+        result: List[Itinerary] = []
 
-                price = (
-                    float(price) if (price := fare.get("price")).isnumeric() else None
-                )
-                cabin = (
-                    cabin
-                    if (cabin := fare.get("cabinclass")).lower() != "n/a"
-                    else None
-                )
-                status = (
-                    FareStatus[status.lower()]
-                    if (status := fare.get("status"))
-                    else FareStatus.unknown
-                )
+        def tofloat(num: str) -> Tuple[bool, Optional[float]]:
+            try:
+                return (True, float(num))
+            except:
+                return (False, None)
 
-                result.fares[id][code] = FareInfo(
-                    itineraryID=fare.get("itineraryID"),
-                    price=price,
-                    cabinclass=cabin,
-                    refundable=bool(fare.get("refundable")),
-                    status=status,
-                )
-
-        result.intineraries.extend(
-            Itinerary(
-                id=i.get("id"),
-                source=i.get("from"),
-                destination=i.get("to"),
-                depart=datetime.strptime(depart, "%Y-%m-%dT%H:%M:%S%z")
-                if (depart := i.get("depart"))
-                else None,
-                arrive=datetime.strptime(arrive, "%Y-%m-%dT%H:%M:%S%z")
-                if (arrive := i.get("arrive"))
-                else None,
-                isOverNightFlight=bool(overnight)
-                if (overnight := i.get("isOverNightFlight"))
-                else None,
-                segments=[],
+        fares: Dict[str, List[FareInfo]] = defaultdict(list)
+        all_fares = [fare for group in payload.fareGroup for fare in group.get("bundleList", [])]
+        for fare in all_fares:
+            status = (
+                FareStatus[status.lower()]
+                if (status := fare.get("status"))
+                else FareStatus.unknown
             )
-            for i in payload.itinerary
-        )
+            if status != FareStatus.available:
+                continue # fare is not purchaseble, ignore.
+
+            id = fare.get("itineraryID")
+            valid_price, price = tofloat(fare.get("price"))
+            cabin = (
+                cabin
+                if (cabin := fare.get("cabinclass")).lower() != "n/a"
+                else None
+            )
+            refundable = True if fare.get("refundable", "").lower() == "true" else False
+            fares[id].append(FareInfo(
+                itineraryID=id,
+                price=price if valid_price else None,
+                code=fare.get("code"),
+                cabinclass=cabin,
+                refundable=refundable,
+                status=status,
+            ))
+
+        for itinerary in payload.itinerary:
+            id = itinerary.get("id")
+            if not id in fares or len(fares[id]) == 0:
+                continue # itinerary is not purchaseble
+
+            depart = datetime.strptime(depart, "%Y-%m-%dT%H:%M:%S%z") if (depart := itinerary.get("depart")) else None
+            arrive = datetime.strptime(arrive, "%Y-%m-%dT%H:%M:%S%z") if (arrive := itinerary.get("arrive")) else None
+            result.append(
+                Itinerary(
+                    id=id,
+                    source=itinerary.get("from"),
+                    destination=itinerary.get("to"),
+                    depart=depart,
+                    arrive=arrive,
+                    isOverNightFlight=itinerary.get("isOverNightFlight"),
+                    #segments=[],
+                    fares=fares[id]
+                )
+            )
 
         return result
 
