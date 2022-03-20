@@ -1,8 +1,11 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Union, Dict
 import asyncio
+from pyppeteer.browser import Browser
+from pyppeteer.page import Page
 from pyppeteer import launch
+from urllib.parse import urlencode
 
 
 @dataclass
@@ -21,23 +24,47 @@ class FareInfo:
 
 
 class JetBluePuppet:
-    def __init__(self) -> None:
-        self.browser = None
+    browser:Browser = None
+    debug: bool = False
 
-    async def get_fares_json(self) -> dict:
+    def __init__(self, debug=False) -> None:
+        self.debug = debug
+
+    async def _get_page(self) -> Page:
         if not self.browser:
-            self.browser = await launch()
-        page = await self.browser.newPage()
+            self.browser: Browser = await launch()
+        page: Page = await self.browser.newPage()
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.74 Safari/537.36')
+        return page
+
+    async def get_fares_json(self, source: str, destination: str, departure_date: datetime, return_date: datetime, passengers: PassengerInfo, timeout: timedelta = None) -> dict:
+        payload = {
+            'from': source.upper(),
+            'to': destination.upper(),
+            'depart': f"{departure_date:%Y-%m-%d}",
+            'return': f"{return_date:%Y-%m-%d}",
+            'isMultiCity': False,
+            'noOfRoute': 1,
+            'lang': 'en',
+            'adults': passengers.adults,
+            'children': passengers.children,
+            'infants': passengers.infants,
+            'sharedMarket': False,
+            'roundTripFaresFlag': False,
+            'usePoints': False,
+        }
+        url = 'https://www.jetblue.com/booking/flights?' + urlencode(payload)
+
         try:
-            await page.goto('https://www.jetblue.com/booking/flights?from=NYC&to=MIA&depart=2022-06-02&return=2022-06-06&isMultiCity=false&noOfRoute=1&lang=en&adults=1&children=0&infants=0&sharedMarket=false&roundTripFaresFlag=false&usePoints=false')
-            resp = await page.waitForResponse(lambda r: 'outboundLFS' in r.url, timeout=30000)
-            content = await resp.text()
-            with open('example1.json', 'w') as f:
-                f.write(content)
-        finally:
-            await page.screenshot({'path': 'example1.png'})
-            await self.browser.close()
+            timeout = timeout or timedelta(seconds=30)
+            page: Page = await self._get_page()
+            await page.goto(url)
+            resp = await page.waitForResponse(lambda r: 'outboundLFS' in r.url, timeout=timeout.seconds * 1000)
+            return await resp.json()
+        except:
+            if self.debug:
+                debug_filename = 'error_page_load_url.png'
+                await page.screenshot(path=debug_filename)
 
     async def __aenter__(self):
         return self
@@ -47,9 +74,11 @@ class JetBluePuppet:
             await self.browser.close()
 
 
-async def main():
+async def main() -> None:
+    passengers = PassengerInfo(adults=1)
     async with JetBluePuppet() as client:
-        await client.get_fares_json()
+        j = await client.get_fares_json("JFK", "MIA", datetime(2022, 6, 2), datetime(2022, 6, 6), passengers)
+        print(j)
 
 if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(main())
