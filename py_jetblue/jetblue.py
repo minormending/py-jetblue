@@ -238,7 +238,7 @@ if __name__ == "__main__":
 
     async def main() -> None:
         passengers = PassengerInfo(adults=args.passengers, children=args.children)
-        """async with JetBluePuppet(debug=True) as client:
+        async with JetBluePuppet(debug=True) as client:
             resp = await client.get_fares_json(args.origin, args.destination, args.departure_date, args.return_date, passengers)
         """
         with open("example.json", "r") as f:
@@ -246,7 +246,7 @@ if __name__ == "__main__":
             import json
 
             jc = json.loads(contents)
-            resp = JetBluePuppetResponse(**jc)
+            resp = JetBluePuppetResponse(**jc)"""
         j = JetBlueParser.parse(resp)
         from pprint import pprint
 
