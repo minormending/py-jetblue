@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Union, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional
 import asyncio
 from pyppeteer.browser import Browser
 from pyppeteer.page import Page
@@ -83,7 +83,6 @@ class Itinerary:
     fares: List[FareInfo]
 
 
-
 class JetBluePuppet:
     browser: Browser = None
     debug: bool = False
@@ -93,7 +92,7 @@ class JetBluePuppet:
 
     async def _get_page(self) -> Page:
         if not self.browser:
-            self.browser: Browser = await launch()
+            self.browser: Browser = await launch(headless=True, args=['--no-sandbox'])
         page: Page = await self.browser.newPage()
         await page.setUserAgent(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.74 Safari/537.36"
@@ -126,9 +125,9 @@ class JetBluePuppet:
         }
         url = "https://www.jetblue.com/booking/flights?" + urlencode(payload)
 
+        page: Page = await self._get_page()
         try:
             timeout = timeout or timedelta(seconds=30)
-            page: Page = await self._get_page()
             await page.goto(url)
             resp = await page.waitForResponse(
                 lambda r: "outboundLFS" in r.url, timeout=timeout.seconds * 1000
