@@ -111,9 +111,6 @@ class JetBluePuppet:
                 lambda r: "outboundLFS" in r.url, timeout=timeout.seconds * 1000
             )
             contents = await resp.json()
-            with open('outbound.json', 'w') as f:
-                import json
-                f.write(json.dumps(contents))
             return InOutBoundResponse(**contents)
         except Exception as ex:
             if self.debug:
