@@ -18,17 +18,21 @@ class PassengerInfo:
 
 
 @dataclass
-class JetBluePuppetResponse:
+class InOutBoundResponse:
     currency: str
-    countryCode: str
     fareGroup: List[Dict]
     itinerary: List[Dict]
     isTransatlanticRoute: bool
-    dategroup: str  # ignore
-    stopsFilter: str  # ignore
-    programName: str  # ignore
-    sessionId: str  # ignore
+    countryCode: str = None # missing from inbound
+    dategroup: str = None # ignore
+    stopsFilter: str = None  # ignore
+    programName: str = None  # ignore
+    sessionId: str = None  # ignore
 
+@dataclass
+class JetBluePuppetResponse:
+    outbound: InOutBoundResponse
+    inbound: InOutBoundResponse
 
 @dataclass
 class FlightLeg:
@@ -58,6 +62,7 @@ class FareStatus(Enum):
     unknown = 0
     not_offered = 1
     available = 2
+    sold_out = 3
 
 
 @dataclass
@@ -99,6 +104,41 @@ class JetBluePuppet:
         )
         return page
 
+    async def _get_outbound_flights(self, page: Page, timeout=None) -> InOutBoundResponse:
+        try:
+            timeout = timeout or timedelta(seconds=30)
+            resp = await page.waitForResponse(
+                lambda r: "outboundLFS" in r.url, timeout=timeout.seconds * 1000
+            )
+            contents = await resp.json()
+            with open('outbound.json', 'w') as f:
+                import json
+                f.write(json.dumps(contents))
+            return InOutBoundResponse(**contents)
+        except Exception as ex:
+            if self.debug:
+                debug_filename = "error_page_wait_outbound.png"
+                await page.screenshot(path=debug_filename)
+            raise ex
+
+    async def _get_inbound_flights(self, page: Page, timeout=None) -> InOutBoundResponse:
+        try:
+            # there might be popups on the page, so use JS to click the first outbound flight
+            await page.evaluate("document.getElementById('auto-flight-quickest-or-lowest-0').click();")
+
+            timeout = timeout or timedelta(seconds=30)
+            resp = await page.waitForResponse(
+                lambda r: "inboundLFS" in r.url and r.request.method != "OPTIONS", 
+                timeout=timeout.seconds * 1000
+            )
+            contents = await resp.json()
+            return InOutBoundResponse(**contents)
+        except Exception as ex:
+            if self.debug:
+                debug_filename = "error_page_wait_inbound.png"
+                await page.screenshot(path=debug_filename)
+            raise ex
+
     async def get_fares_json(
         self,
         source: str,
@@ -127,18 +167,16 @@ class JetBluePuppet:
 
         page: Page = await self._get_page()
         try:
-            timeout = timeout or timedelta(seconds=30)
             await page.goto(url)
-            resp = await page.waitForResponse(
-                lambda r: "outboundLFS" in r.url, timeout=timeout.seconds * 1000
-            )
-            contents = await resp.json()
-            return JetBluePuppetResponse(**contents)
         except Exception as ex:
             if self.debug:
                 debug_filename = "error_page_load_url.png"
                 await page.screenshot(path=debug_filename)
             raise ex
+
+        outbound: InOutBoundResponse = await self._get_outbound_flights(page, timeout)
+        inbound: InOutBoundResponse = await self._get_inbound_flights(page, timeout)
+        return JetBluePuppetResponse(outbound=outbound, inbound=inbound)
 
     async def __aenter__(self):
         return self
@@ -150,7 +188,7 @@ class JetBluePuppet:
 
 class JetBlueParser:
     @classmethod
-    def parse(self, payload: JetBluePuppetResponse) -> List[Itinerary]:
+    def parse(self, payload: InOutBoundResponse) -> List[Itinerary]:
         result: List[Itinerary] = []
 
         def tofloat(num: str) -> Tuple[bool, Optional[float]]:
@@ -233,7 +271,26 @@ if __name__ == "__main__":
         "--children", type=int, default=0, help="Number of child passengers. default=0"
     )
 
+    
+    parser.add_argument(
+        "--depart-after", type=int, default=None, help="Show flights departing after hour."
+    )
+    parser.add_argument(
+        "--depart-before", type=int, default=None, help="Show flights departing before hour."
+    )
+    parser.add_argument(
+        "--return-after", type=int, default=None, help="Show flights returning after hour."
+    )
+    parser.add_argument(
+        "--return-before", type=int, default=None, help="Show flights returning before hour."
+    )
+
     args = parser.parse_args()
+
+    if args.depart_after and args.depart_before and args.depart_before < args.depart_after:
+        raise argparse.ArgumentError(message="departure-before hour cannot be before departure-after hour.")
+    if args.return_after and args.return_before and args.return_before < args.return_after:
+        raise argparse.ArgumentError(message="return-before hour cannot be before return-after hour.") 
 
     async def main() -> None:
         passengers = PassengerInfo(adults=args.passengers, children=args.children)
@@ -245,10 +302,22 @@ if __name__ == "__main__":
             import json
 
             jc = json.loads(contents)
-            resp = JetBluePuppetResponse(**jc)"""
-        j = JetBlueParser.parse(resp)
+            resp = InOutBoundResponse(**jc)"""
+        outbound: List[Itinerary] = JetBlueParser.parse(resp.outbound)
+        inbound: List[Itinerary] = JetBlueParser.parse(resp.inbound)
         from pprint import pprint
 
-        pprint(j)
+        for itinerary in outbound:
+            if args.depart_after and itinerary.depart.hour < args.depart_after:
+                continue
+            if args.depart_before and itinerary.depart.hour > args.depart_before:
+                continue
+            pprint(itinerary)
+        for itinerary in inbound:
+            if args.return_after and itinerary.arrive.hour < args.return_after:
+                continue
+            if args.return_before and itinerary.arrive.hour > args.return_before:
+                continue
+            pprint(itinerary)
 
     asyncio.get_event_loop().run_until_complete(main())
