@@ -3,7 +3,8 @@ Find JetBlue Airline prices. The current implementation uses puppeteer to load t
 
 # Usage
 ```
-usage: jetblue.py [-h] [--passengers PASSENGERS] [--children CHILDREN] origin departure_date destination return_date
+usage: jetblue.py [-h] [--passengers PASSENGERS] [--children CHILDREN] [--depart-after DEPART_AFTER] [--depart-before DEPART_BEFORE] [--return-after RETURN_AFTER] [--return-before RETURN_BEFORE]
+                  origin departure_date destination return_date
 
 Get JetBlue airline prices.
 
@@ -13,11 +14,19 @@ positional arguments:
   destination           Destination airport.
   return_date           Return date from destination airport. YYYY-mm-dd
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --passengers PASSENGERS
                         Number of adult passengers. default=1
   --children CHILDREN   Number of child passengers. default=0
+  --depart-after DEPART_AFTER
+                        Show flights departing after hour.
+  --depart-before DEPART_BEFORE
+                        Show flights departing before hour.
+  --return-after RETURN_AFTER
+                        Show flights returning after hour.
+  --return-before RETURN_BEFORE
+                        Show flights returning before hour.
 ```
 
 # Example
