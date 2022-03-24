@@ -2,12 +2,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional
+from urllib.parse import urlencode
+from enum import Enum
+
 import asyncio
 from pyppeteer.browser import Browser
 from pyppeteer.page import Page
 from pyppeteer import launch
-from urllib.parse import urlencode
-from enum import Enum
 
 
 @dataclass
