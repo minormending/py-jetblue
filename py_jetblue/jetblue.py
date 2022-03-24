@@ -23,16 +23,18 @@ class InOutBoundResponse:
     fareGroup: List[Dict]
     itinerary: List[Dict]
     isTransatlanticRoute: bool
-    countryCode: str = None # missing from inbound
-    dategroup: str = None # ignore
+    countryCode: str = None  # missing from inbound
+    dategroup: str = None  # ignore
     stopsFilter: str = None  # ignore
     programName: str = None  # ignore
     sessionId: str = None  # ignore
+
 
 @dataclass
 class JetBluePuppetResponse:
     outbound: InOutBoundResponse
     inbound: InOutBoundResponse
+
 
 @dataclass
 class FlightLeg:
@@ -57,7 +59,6 @@ class Segment:
     throughFlightLegs: List[Dict]  # FlightLeg
 
 
-
 class FareStatus(Enum):
     unknown = 0
     not_offered = 1
@@ -74,6 +75,7 @@ class FareInfo:
     refundable: bool
     status: FareStatus
 
+
 @dataclass
 class Itinerary:
     id: str
@@ -82,7 +84,7 @@ class Itinerary:
     depart: datetime
     arrive: datetime
     isOverNightFlight: bool
-    #segments: List[Dict]  # Segment
+    # segments: List[Dict]  # Segment
 
     # custom properties
     fares: List[FareInfo]
@@ -97,14 +99,16 @@ class JetBluePuppet:
 
     async def _get_page(self) -> Page:
         if not self.browser:
-            self.browser: Browser = await launch(headless=True, args=['--no-sandbox'])
+            self.browser: Browser = await launch(headless=True, args=["--no-sandbox"])
         page: Page = await self.browser.newPage()
         await page.setUserAgent(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.74 Safari/537.36"
         )
         return page
 
-    async def _get_outbound_flights(self, page: Page, timeout=None) -> InOutBoundResponse:
+    async def _get_outbound_flights(
+        self, page: Page, timeout=None
+    ) -> InOutBoundResponse:
         try:
             timeout = timeout or timedelta(seconds=30)
             resp = await page.waitForResponse(
@@ -118,15 +122,19 @@ class JetBluePuppet:
                 await page.screenshot(path=debug_filename)
             raise ex
 
-    async def _get_inbound_flights(self, page: Page, timeout=None) -> InOutBoundResponse:
+    async def _get_inbound_flights(
+        self, page: Page, timeout=None
+    ) -> InOutBoundResponse:
         try:
             # there might be popups on the page, so use JS to click the first outbound flight
-            await page.evaluate("document.getElementById('auto-flight-quickest-or-lowest-0').click();")
+            await page.evaluate(
+                "document.getElementById('auto-flight-quickest-or-lowest-0').click();"
+            )
 
             timeout = timeout or timedelta(seconds=30)
             resp = await page.waitForResponse(
-                lambda r: "inboundLFS" in r.url and r.request.method != "OPTIONS", 
-                timeout=timeout.seconds * 1000
+                lambda r: "inboundLFS" in r.url and r.request.method != "OPTIONS",
+                timeout=timeout.seconds * 1000,
             )
             contents = await resp.json()
             return InOutBoundResponse(**contents)
@@ -195,7 +203,9 @@ class JetBlueParser:
                 return (False, None)
 
         fares: Dict[str, List[FareInfo]] = defaultdict(list)
-        all_fares = [fare for group in payload.fareGroup for fare in group.get("bundleList", [])]
+        all_fares = [
+            fare for group in payload.fareGroup for fare in group.get("bundleList", [])
+        ]
         for fare in all_fares:
             status = (
                 FareStatus[status.lower()]
@@ -203,32 +213,40 @@ class JetBlueParser:
                 else FareStatus.unknown
             )
             if status != FareStatus.available:
-                continue # fare is not purchaseble, ignore.
+                continue  # fare is not purchaseble, ignore.
 
             id = fare.get("itineraryID")
             valid_price, price = tofloat(fare.get("price"))
             cabin = (
-                cabin
-                if (cabin := fare.get("cabinclass")).lower() != "n/a"
-                else None
+                cabin if (cabin := fare.get("cabinclass")).lower() != "n/a" else None
             )
             refundable = True if fare.get("refundable", "").lower() == "true" else False
-            fares[id].append(FareInfo(
-                itineraryID=id,
-                price=price if valid_price else None,
-                code=fare.get("code"),
-                cabinclass=cabin,
-                refundable=refundable,
-                status=status,
-            ))
+            fares[id].append(
+                FareInfo(
+                    itineraryID=id,
+                    price=price if valid_price else None,
+                    code=fare.get("code"),
+                    cabinclass=cabin,
+                    refundable=refundable,
+                    status=status,
+                )
+            )
 
         for itinerary in payload.itinerary:
             id = itinerary.get("id")
             if not id in fares or len(fares[id]) == 0:
-                continue # itinerary is not purchaseble
+                continue  # itinerary is not purchaseble
 
-            depart = datetime.strptime(depart, "%Y-%m-%dT%H:%M:%S%z") if (depart := itinerary.get("depart")) else None
-            arrive = datetime.strptime(arrive, "%Y-%m-%dT%H:%M:%S%z") if (arrive := itinerary.get("arrive")) else None
+            depart = (
+                datetime.strptime(depart, "%Y-%m-%dT%H:%M:%S%z")
+                if (depart := itinerary.get("depart"))
+                else None
+            )
+            arrive = (
+                datetime.strptime(arrive, "%Y-%m-%dT%H:%M:%S%z")
+                if (arrive := itinerary.get("arrive"))
+                else None
+            )
             result.append(
                 Itinerary(
                     id=id,
@@ -237,8 +255,8 @@ class JetBlueParser:
                     depart=depart,
                     arrive=arrive,
                     isOverNightFlight=itinerary.get("isOverNightFlight"),
-                    #segments=[],
-                    fares=fares[id]
+                    # segments=[],
+                    fares=fares[id],
                 )
             )
 
@@ -262,37 +280,69 @@ if __name__ == "__main__":
         help="Return date from destination airport. YYYY-mm-dd",
     )
     parser.add_argument(
-        "--passengers", type=int, default=1, help="Number of adult passengers. default=1"
+        "--passengers",
+        type=int,
+        default=1,
+        help="Number of adult passengers. default=1",
     )
     parser.add_argument(
         "--children", type=int, default=0, help="Number of child passengers. default=0"
     )
 
-    
     parser.add_argument(
-        "--depart-after", type=int, default=None, help="Show flights departing after hour."
+        "--depart-after",
+        type=int,
+        default=None,
+        help="Show flights departing after hour.",
     )
     parser.add_argument(
-        "--depart-before", type=int, default=None, help="Show flights departing before hour."
+        "--depart-before",
+        type=int,
+        default=None,
+        help="Show flights departing before hour.",
     )
     parser.add_argument(
-        "--return-after", type=int, default=None, help="Show flights returning after hour."
+        "--return-after",
+        type=int,
+        default=None,
+        help="Show flights returning after hour.",
     )
     parser.add_argument(
-        "--return-before", type=int, default=None, help="Show flights returning before hour."
+        "--return-before",
+        type=int,
+        default=None,
+        help="Show flights returning before hour.",
     )
 
     args = parser.parse_args()
 
-    if args.depart_after and args.depart_before and args.depart_before < args.depart_after:
-        raise argparse.ArgumentError(message="departure-before hour cannot be before departure-after hour.")
-    if args.return_after and args.return_before and args.return_before < args.return_after:
-        raise argparse.ArgumentError(message="return-before hour cannot be before return-after hour.") 
+    if (
+        args.depart_after
+        and args.depart_before
+        and args.depart_before < args.depart_after
+    ):
+        raise argparse.ArgumentError(
+            message="departure-before hour cannot be before departure-after hour."
+        )
+    if (
+        args.return_after
+        and args.return_before
+        and args.return_before < args.return_after
+    ):
+        raise argparse.ArgumentError(
+            message="return-before hour cannot be before return-after hour."
+        )
 
     async def main() -> None:
         passengers = PassengerInfo(adults=args.passengers, children=args.children)
         async with JetBluePuppet(debug=True) as client:
-            resp = await client.get_fares_json(args.origin, args.destination, args.departure_date, args.return_date, passengers)
+            resp = await client.get_fares_json(
+                args.origin,
+                args.destination,
+                args.departure_date,
+                args.return_date,
+                passengers,
+            )
         """
         with open("example.json", "r") as f:
             contents = f.read()
