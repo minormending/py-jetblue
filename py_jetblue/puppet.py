@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import json
 from typing import List, Dict, Tuple, Optional
 from urllib.parse import urlencode
 from enum import Enum
@@ -94,9 +95,11 @@ class Itinerary:
 class JetBluePuppet:
     browser: Browser = None
     debug: bool = False
+    save_json: bool = False
 
-    def __init__(self, debug=False) -> None:
+    def __init__(self, debug=False, save_json=False) -> None:
         self.debug = debug
+        self.save_json = save_json
 
     async def _get_page(self) -> Page:
         if not self.browser:
@@ -116,6 +119,9 @@ class JetBluePuppet:
                 lambda r: "outboundLFS" in r.url, timeout=timeout.seconds * 1000
             )
             contents = await resp.json()
+            if self.save_json:
+                with open('outbound.json','w') as f:
+                    f.write(json.dumps(contents, indent=4, sort_keys=True))
             return InOutBoundResponse(**contents)
         except Exception as ex:
             if self.debug:
@@ -138,6 +144,9 @@ class JetBluePuppet:
                 timeout=timeout.seconds * 1000,
             )
             contents = await resp.json()
+            if self.save_json:
+                with open('inbound.json', 'w') as f:
+                    f.write(json.dumps(contents, indent=4, sort_keys=True))
             return InOutBoundResponse(**contents)
         except Exception as ex:
             if self.debug:
@@ -192,7 +201,7 @@ class JetBluePuppet:
             await self.browser.close()
 
 
-class JetBlueParser:
+class JetBluePuppetParser:
     @classmethod
     def parse(self, payload: InOutBoundResponse) -> List[Itinerary]:
         result: List[Itinerary] = []
@@ -289,6 +298,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--children", type=int, default=0, help="Number of child passengers. default=0"
     )
+    parser.add_argument(
+        "--save", action='store_true', help="Save the outbound and inbound json to files."
+    )
 
     parser.add_argument(
         "--depart-after",
@@ -322,7 +334,7 @@ if __name__ == "__main__":
         and args.depart_before
         and args.depart_before < args.depart_after
     ):
-        raise argparse.ArgumentError(
+        raise argparse.ArgumentError(None,
             message="departure-before hour cannot be before departure-after hour."
         )
     if (
@@ -330,13 +342,13 @@ if __name__ == "__main__":
         and args.return_before
         and args.return_before < args.return_after
     ):
-        raise argparse.ArgumentError(
+        raise argparse.ArgumentError(None,
             message="return-before hour cannot be before return-after hour."
         )
 
     async def main() -> None:
         passengers = PassengerInfo(adults=args.passengers, children=args.children)
-        async with JetBluePuppet(debug=True) as client:
+        async with JetBluePuppet(debug=True, save_json=args.save) as client:
             resp = await client.get_fares_json(
                 args.origin,
                 args.destination,
@@ -351,21 +363,37 @@ if __name__ == "__main__":
 
             jc = json.loads(contents)
             resp = InOutBoundResponse(**jc)"""
-        outbound: List[Itinerary] = JetBlueParser.parse(resp.outbound)
-        inbound: List[Itinerary] = JetBlueParser.parse(resp.inbound)
+        outbound: List[Itinerary] = JetBluePuppetParser.parse(resp.outbound)
+        inbound: List[Itinerary] = JetBluePuppetParser.parse(resp.inbound)
         from pprint import pprint
 
+        def print_itinerary(itineraries: List[Itinerary]) -> None:
+            for itinerary in itineraries:
+                line = (
+                    f"{itinerary.source} {itinerary.depart:%H:%m} => {itinerary.destination} {itinerary.arrive:%H:%m} " +
+                    " ".join(f"[ ${fare.price} {fare.code} {'REFUNDABLE' if fare.refundable else ''}]" for fare in itinerary.fares)
+                )
+                print(line)
+
+        trips = []
         for itinerary in outbound:
             if args.depart_after and itinerary.depart.hour < args.depart_after:
                 continue
             if args.depart_before and itinerary.depart.hour > args.depart_before:
                 continue
-            pprint(itinerary)
+            trips.append(itinerary)
+        trips = sorted(trips, key=lambda i: i.depart)
+        print_itinerary(trips)
+
+        trips = []
         for itinerary in inbound:
             if args.return_after and itinerary.arrive.hour < args.return_after:
                 continue
             if args.return_before and itinerary.arrive.hour > args.return_before:
                 continue
-            pprint(itinerary)
+            trips.append(itinerary)
+        trips = sorted(trips, key=lambda i: i.depart)
+        print_itinerary(trips)
+        
 
     asyncio.get_event_loop().run_until_complete(main())

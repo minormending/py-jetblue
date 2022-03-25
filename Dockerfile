@@ -48,4 +48,4 @@ RUN pyppeteer-install
 
 COPY py_jetblue/ /app
 
-ENTRYPOINT ["python", "./jetblue.py"]
+ENTRYPOINT ["python", "./puppet.py"]
