@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch: 
 
 jobs:
 
@@ -21,14 +22,14 @@ jobs:
       with:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-        
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
       
     - name: Build and push
       uses: docker/build-push-action@v2
       with:
-        context: .
+        context: ./
         file: ./Dockerfile
+        builder: ${{ steps.buildx.outputs.name }}
         push: true
         tags: ${{ secrets.DOCKER_HUB_USERNAME }}/pyjetblue:latest
+        cache-from: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/pyjetblue:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/pyjetblue:buildcache,mode=max
