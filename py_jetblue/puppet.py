@@ -1,12 +1,14 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import json
+import re
 from typing import List, Dict, Tuple, Optional
 from urllib.parse import urlencode
 from enum import Enum
 
 import asyncio
+from webbrowser import get
 from pyppeteer.browser import Browser
 from pyppeteer.page import Page
 from pyppeteer import launch
@@ -43,6 +45,7 @@ class FlightLeg:
     departureAirport: str
     arrivalAirport: str
     departureTerminal: str
+    arrivalTerminal: str
 
 
 @dataclass
@@ -55,10 +58,12 @@ class Segment:
     stops: int
     depart: datetime
     arrive: datetime
+    duration: timedelta
+    layover: timedelta
     flightno: str
     operatingAirlineCode: str
     operatingAirlineName: str
-    throughFlightLegs: List[Dict]  # FlightLeg
+    throughFlightLegs: List[FlightLeg]  # FlightLeg
 
 
 class FareStatus(Enum):
@@ -86,7 +91,7 @@ class Itinerary:
     depart: datetime
     arrive: datetime
     isOverNightFlight: bool
-    # segments: List[Dict]  # Segment
+    segments: List[Segment]
 
     # custom properties
     fares: List[FareInfo]
@@ -120,7 +125,7 @@ class JetBluePuppet:
             )
             contents = await resp.json()
             if self.save_json:
-                with open('outbound.json','w') as f:
+                with open("outbound.json", "w") as f:
                     f.write(json.dumps(contents, indent=4, sort_keys=True))
             return InOutBoundResponse(**contents)
         except Exception as ex:
@@ -145,7 +150,7 @@ class JetBluePuppet:
             )
             contents = await resp.json()
             if self.save_json:
-                with open('inbound.json', 'w') as f:
+                with open("inbound.json", "w") as f:
                     f.write(json.dumps(contents, indent=4, sort_keys=True))
             return InOutBoundResponse(**contents)
         except Exception as ex:
@@ -206,11 +211,20 @@ class JetBluePuppetParser:
     def parse(self, payload: InOutBoundResponse) -> List[Itinerary]:
         result: List[Itinerary] = []
 
+        # isnumeric() doesn't detect floats, so try/fail instead
         def tofloat(num: str) -> Tuple[bool, Optional[float]]:
             try:
                 return (True, float(num))
             except:
                 return (False, None)
+
+        def parse_duartion(val: str) -> Optional[timedelta]:
+            match = re.match("PT(?P<hour>\d+)H(?P<minutes>\d+)M", val or "")
+            if match:
+                return timedelta(
+                    hours=int(match.group("hour")), minutes=int(match.group("minutes"))
+                )
+            return None
 
         fares: Dict[str, List[FareInfo]] = defaultdict(list)
         all_fares = [
@@ -257,6 +271,47 @@ class JetBluePuppetParser:
                 if (arrive := itinerary.get("arrive"))
                 else None
             )
+
+            segments: List[Segment] = []
+            for segment in itinerary.get("segments", []):
+                segment_depart = (
+                    datetime.strptime(segment_depart, "%Y-%m-%dT%H:%M:%S%z")
+                    if (segment_depart := segment.get("depart"))
+                    else None
+                )
+                segment_arrive = (
+                    datetime.strptime(segment_arrive, "%Y-%m-%dT%H:%M:%S%z")
+                    if (segment_arrive := segment.get("arrive"))
+                    else None
+                )
+                legs = [
+                    FlightLeg(
+                        departureAirport=leg.get("departureAirport"),
+                        arrivalAirport=leg.get("arrivalAirport"),
+                        departureTerminal=leg.get("departureTerminal"),
+                        arrivalTerminal=leg.get("arrivalTerminal"),
+                    )
+                    for leg in segment.get("throughFlightLegs", [])
+                ]
+                segments.append(
+                    Segment(
+                        id=segment.get("id"),
+                        source=segment.get("from"),
+                        destination=segment.get("to"),
+                        aircraft=segment.get("aircraft"),
+                        aircraftCode=segment.get("aircraftCode"),
+                        stops=int(segment.get("stops", "0")),
+                        depart=segment_depart,
+                        arrive=segment_arrive,
+                        duration=parse_duartion(segment.get("duration")),
+                        layover=parse_duartion(segment.get("layover")),
+                        flightno=segment.get("flightno"),
+                        operatingAirlineCode=segment.get("operatingAirlineCode"),
+                        operatingAirlineName=segment.get("operatingAirlineName"),
+                        throughFlightLegs=legs,
+                    )
+                )
+
             result.append(
                 Itinerary(
                     id=id,
@@ -265,7 +320,7 @@ class JetBluePuppetParser:
                     depart=depart,
                     arrive=arrive,
                     isOverNightFlight=itinerary.get("isOverNightFlight"),
-                    # segments=[],
+                    segments=segments,
                     fares=fares[id],
                 )
             )
@@ -299,7 +354,9 @@ if __name__ == "__main__":
         "--children", type=int, default=0, help="Number of child passengers. default=0"
     )
     parser.add_argument(
-        "--save", action='store_true', help="Save the outbound and inbound json to files."
+        "--save",
+        action="store_true",
+        help="Save the outbound and inbound json to files.",
     )
 
     parser.add_argument(
@@ -334,21 +391,21 @@ if __name__ == "__main__":
         and args.depart_before
         and args.depart_before < args.depart_after
     ):
-        raise argparse.ArgumentError(None,
-            message="departure-before hour cannot be before departure-after hour."
+        raise argparse.ArgumentError(
+            None, message="departure-before hour cannot be before departure-after hour."
         )
     if (
         args.return_after
         and args.return_before
         and args.return_before < args.return_after
     ):
-        raise argparse.ArgumentError(None,
-            message="return-before hour cannot be before return-after hour."
+        raise argparse.ArgumentError(
+            None, message="return-before hour cannot be before return-after hour."
         )
 
     async def main() -> None:
         passengers = PassengerInfo(adults=args.passengers, children=args.children)
-        async with JetBluePuppet(debug=True, save_json=args.save) as client:
+        """async with JetBluePuppet(debug=True, save_json=args.save) as client:
             resp = await client.get_fares_json(
                 args.origin,
                 args.destination,
@@ -357,23 +414,43 @@ if __name__ == "__main__":
                 passengers,
             )
         """
-        with open("example.json", "r") as f:
-            contents = f.read()
-            import json
+        import json
+        with open("outbound.json", "r") as f:
+            contents_outbound = InOutBoundResponse(**json.loads(f.read()))
+        with open("inbound.json", "r") as f:
+            contents_inbound = InOutBoundResponse(**json.loads(f.read()))
+        resp = JetBluePuppetResponse(contents_outbound, contents_inbound)
 
-            jc = json.loads(contents)
-            resp = InOutBoundResponse(**jc)"""
         outbound: List[Itinerary] = JetBluePuppetParser.parse(resp.outbound)
         inbound: List[Itinerary] = JetBluePuppetParser.parse(resp.inbound)
         from pprint import pprint
 
         def print_itinerary(itineraries: List[Itinerary]) -> None:
+            year_format: str = "%Y-%m-%d %I:%M %p"
+            hour_format: str = "%I:%M %p"
             for itinerary in itineraries:
-                line = (
-                    f"{itinerary.source} {itinerary.depart:%H:%m} => {itinerary.destination} {itinerary.arrive:%H:%m} " +
-                    " ".join(f"[ ${fare.price} {fare.code} {'REFUNDABLE' if fare.refundable else ''}]" for fare in itinerary.fares)
+                flight_times = ""
+                total_time = timedelta(hours=0)
+                for idx,segment in enumerate(itinerary.segments):
+                    source = segment.source if idx == 0 else ""
+                    src_format = year_format if idx == 0 else hour_format
+                    dst_format = year_format if segment.depart.date() != segment.arrive.date() or (idx == len(itinerary.segments) -1) else hour_format
+                    duration = f"\N{airplane}  {int(segment.duration.seconds / 60 / 60)}:{int(segment.duration.seconds / 60) % 60} \N{airplane} "
+                    duration = f"{segment.depart.strftime(src_format)} {duration} {segment.arrive.strftime(dst_format)} "
+                    layover = f"[ {int(segment.layover.seconds / 60 / 60)}:{int(segment.layover.seconds / 60) % 60} ]" if segment.layover else ""
+                    flight_times += f"{source} {duration} {segment.destination} {layover}"
+                    total_time += (segment.duration or timedelta(hours=0)) + (segment.layover or timedelta(hours=0))
+
+                duration = f"\N{airplane}  {int(total_time.seconds / 60 / 60)}:{int(total_time.seconds / 60) % 60} \N{airplane} "
+                flight_overall = (
+                    f"{itinerary.source} {itinerary.depart:%H:%M} {duration} {itinerary.destination} {itinerary.arrive:%H:%M} "
+                    + " ".join(
+                        f"[ ${fare.price} {fare.code} {'REFUNDABLE' if fare.refundable else ''}]"
+                        for fare in itinerary.fares
+                    )
                 )
-                print(line)
+                print(flight_overall)
+                print("\t" + flight_times)
 
         trips = []
         for itinerary in outbound:
@@ -394,6 +471,5 @@ if __name__ == "__main__":
             trips.append(itinerary)
         trips = sorted(trips, key=lambda i: i.depart)
         print_itinerary(trips)
-        
 
     asyncio.get_event_loop().run_until_complete(main())
