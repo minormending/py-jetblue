@@ -415,6 +415,7 @@ if __name__ == "__main__":
             )
         """
         import json
+
         with open("outbound.json", "r") as f:
             contents_outbound = InOutBoundResponse(**json.loads(f.read()))
         with open("inbound.json", "r") as f:
@@ -430,15 +431,28 @@ if __name__ == "__main__":
             for itinerary in itineraries:
                 flight_times = ""
                 total_time = timedelta(hours=0)
-                for idx,segment in enumerate(itinerary.segments):
+                for idx, segment in enumerate(itinerary.segments):
                     source = segment.source if idx == 0 else ""
                     src_format = year_format if idx == 0 else hour_format
-                    dst_format = year_format if segment.depart.date() != segment.arrive.date() or (idx == len(itinerary.segments) -1) else hour_format
+                    dst_format = (
+                        year_format
+                        if segment.depart.date() != segment.arrive.date()
+                        or (idx == len(itinerary.segments) - 1)
+                        else hour_format
+                    )
                     duration = f"\N{airplane}  {int(segment.duration.seconds / 60 / 60)}:{int(segment.duration.seconds / 60) % 60} \N{airplane} "
                     duration = f"{segment.depart.strftime(src_format)} {duration} {segment.arrive.strftime(dst_format)} "
-                    layover = f"[ {int(segment.layover.seconds / 60 / 60)}:{int(segment.layover.seconds / 60) % 60} ]" if segment.layover else ""
-                    flight_times += f"{source} {duration} {segment.destination} {layover}"
-                    total_time += (segment.duration or timedelta(hours=0)) + (segment.layover or timedelta(hours=0))
+                    layover = (
+                        f"[ {int(segment.layover.seconds / 60 / 60)}:{int(segment.layover.seconds / 60) % 60} ]"
+                        if segment.layover
+                        else ""
+                    )
+                    flight_times += (
+                        f"{source} {duration} {segment.destination} {layover}"
+                    )
+                    total_time += (segment.duration or timedelta(hours=0)) + (
+                        segment.layover or timedelta(hours=0)
+                    )
 
                 duration = f"\N{airplane}  {int(total_time.seconds / 60 / 60)}:{int(total_time.seconds / 60) % 60:02d} \N{airplane} "
                 flight_overall = (
