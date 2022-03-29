@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 import json
 import re
 from typing import List, Dict, Tuple, Optional
@@ -12,13 +12,7 @@ from webbrowser import get
 from pyppeteer.browser import Browser
 from pyppeteer.page import Page
 from pyppeteer import launch
-
-
-@dataclass
-class PassengerInfo:
-    adults: int
-    children: int = 0
-    infants: int = 0
+from util import PassengerInfo
 
 
 @dataclass
