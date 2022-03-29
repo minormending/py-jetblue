@@ -423,7 +423,6 @@ if __name__ == "__main__":
 
         outbound: List[Itinerary] = JetBluePuppetParser.parse(resp.outbound)
         inbound: List[Itinerary] = JetBluePuppetParser.parse(resp.inbound)
-        from pprint import pprint
 
         def print_itinerary(itineraries: List[Itinerary]) -> None:
             year_format: str = "%Y-%m-%d %I:%M %p"
@@ -441,7 +440,7 @@ if __name__ == "__main__":
                     flight_times += f"{source} {duration} {segment.destination} {layover}"
                     total_time += (segment.duration or timedelta(hours=0)) + (segment.layover or timedelta(hours=0))
 
-                duration = f"\N{airplane}  {int(total_time.seconds / 60 / 60)}:{int(total_time.seconds / 60) % 60} \N{airplane} "
+                duration = f"\N{airplane}  {int(total_time.seconds / 60 / 60)}:{int(total_time.seconds / 60) % 60:02d} \N{airplane} "
                 flight_overall = (
                     f"{itinerary.source} {itinerary.depart:%H:%M} {duration} {itinerary.destination} {itinerary.arrive:%H:%M} "
                     + " ".join(
@@ -470,6 +469,7 @@ if __name__ == "__main__":
                 continue
             trips.append(itinerary)
         trips = sorted(trips, key=lambda i: i.depart)
+        print()
         print_itinerary(trips)
 
     asyncio.get_event_loop().run_until_complete(main())
