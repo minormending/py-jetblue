@@ -74,3 +74,60 @@ FRA 14:15 ✈  13:43 ✈  JFK 21:58 [ $1027.47 BLUE ]
         FRA 2022-06-12 02:15 PM ✈  3:35 ✈  03:50 PM  KEF [ 1:25 ] 05:15 PM ✈  5:35 ✈  06:50 PM  BOS [ 1:55 ] 08:45 PM ✈  1:13 ✈  2022-06-12 09:58 PM  JFK
 
 ```
+
+# Monthly Price Estimate
+You can view the monthly price estimate to a particular destination by using the estimates script.
+
+## Usage
+```
+usage: estimate.py [-h] [--passengers PASSENGERS] [--children CHILDREN] origin destination departure_month
+
+Get JetBlue airline prices.
+
+positional arguments:
+  origin                Origin airport.
+  destination           Destination airport.
+  departure_month       Departure date from origin airport. YYYY-mm
+
+options:
+  -h, --help            show this help message and exit
+  --passengers PASSENGERS
+                        Number of adult passengers. default=1
+  --children CHILDREN   Number of child passengers. default=0
+```
+
+## Example
+```
+>>> python py_jetblue\estimate.py JFK MIA 2022-06
+date         outbound   inbound
+2022-06-01      $74     $74
+2022-06-02      $99     $74
+2022-06-03      $128    $74
+2022-06-04      $74     $74
+2022-06-05      $74     $128
+2022-06-06      $74     $99
+2022-06-07      $74     $74
+2022-06-08      $74     $74
+2022-06-09      $140    $74
+2022-06-10      $140    $74
+2022-06-11      $99     $74
+2022-06-12      $99     $148
+2022-06-13      $99     $128
+2022-06-14      $74     $74
+2022-06-15      $74     $74
+2022-06-16      $148    $74
+2022-06-17      $173    $74
+2022-06-18      $148    $74
+2022-06-19      $128    $148
+2022-06-20      $99     $140
+2022-06-21      $74     $74
+2022-06-22      $74     $74
+2022-06-23      $173    $74
+2022-06-24      $173    $99
+2022-06-25      $204    $99
+2022-06-26      $196    $148
+2022-06-27      $140    $140
+2022-06-28      $99     $74
+2022-06-29      $99     $74
+2022-06-30      $196    $128
+```
