@@ -405,7 +405,7 @@ if __name__ == "__main__":
 
     async def main() -> None:
         passengers = PassengerInfo(adults=args.passengers, children=args.children)
-        """async with JetBluePuppet(debug=True, save_json=args.save) as client:
+        async with JetBluePuppet(debug=True, save_json=args.save) as client:
             resp = await client.get_fares_json(
                 args.origin,
                 args.destination,
@@ -413,15 +413,6 @@ if __name__ == "__main__":
                 args.return_date,
                 passengers,
             )
-        """
-        import json
-
-        with open("outbound.json", "r") as f:
-            contents_outbound = InOutBoundResponse(**json.loads(f.read()))
-        with open("inbound.json", "r") as f:
-            contents_inbound = InOutBoundResponse(**json.loads(f.read()))
-        resp = JetBluePuppetResponse(contents_outbound, contents_inbound)
-
         outbound: List[Itinerary] = JetBluePuppetParser.parse(resp.outbound)
         inbound: List[Itinerary] = JetBluePuppetParser.parse(resp.inbound)
 
@@ -440,7 +431,7 @@ if __name__ == "__main__":
                         or (idx == len(itinerary.segments) - 1)
                         else hour_format
                     )
-                    duration = f"\N{airplane}  {int(segment.duration.seconds / 60 / 60)}:{int(segment.duration.seconds / 60) % 60} \N{airplane} "
+                    duration = f"\N{airplane}  {int(segment.duration.seconds / 60 / 60)}:{int(segment.duration.seconds / 60) % 60:02d} \N{airplane} "
                     duration = f"{segment.depart.strftime(src_format)} {duration} {segment.arrive.strftime(dst_format)} "
                     layover = (
                         f"[ {int(segment.layover.seconds / 60 / 60)}:{int(segment.layover.seconds / 60) % 60} ]"
