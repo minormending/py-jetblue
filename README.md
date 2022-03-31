@@ -1,4 +1,4 @@
-# py-jetblue
+# JetBlue Prices
 Find JetBlue Airline prices. The current implementation uses puppeteer to load the JetBlue website and capture an XHR response. Puppeteer installs Chromium on first use, so if you don't want to download Chromium locally, build the docker container.
 
 Alternatively, if you do not want to build the docker container youself, you can download the prebuilt containers from:
